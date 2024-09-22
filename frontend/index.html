@@ -9,59 +9,166 @@
     <div class="center">
         <h1>My Chat Application</h1>
         <h3 id="chat-header">Currently in chat: general</h3>
+        <h3 id="connection-header">Connected to server: false</h3>
         <form id="chatroom-selection">
-            <label for="chatroom">Choose a chatroom:</label>
-            <input type="text" id="chatroom" name="chatroom">
-            <input type="submit" value="Enter Chatroom">
+            <label for="chatroom">Chatroom:</label>
+            <input type="text" id="chatroom" name="chatroom"><br><br>
+            <input type="submit" value="Change chatroom">
         </form>
 
         <br>
-
-        <textarea class="messagearea" id="chatmessages" readonly name=""chatmessages" rows="4" cols="50" placeholder="Welcome to general chatroom, here messages from others will appear">
-        </textarea>
+        <textarea class="messagearea" id="chatmessages" readonly name="chatmessages" rows="4" cols="50"
+            placeholder="Welcome to the general chatroom, here messages from others will appear"></textarea>
 
         <br>
-        
+
         <form id="chatroom-message">
             <label for="message">Message:</label>
             <input type="text" id="message" name="message"><br><br>
             <input type="submit" value="Send message">
         </form>
 
-        <!-- <div style="border: 3px solid black; margin-top: 30px;">
+        <div style="border: 1px solid black; padding: 10px; margin: 10px; background-color: white;">
             <form id="login-form">
-
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username"><br>
+                <label for="password">Password:</label>
+                <input id="password" type="password" name="password"><br>
+                <input type="submit" value="Login">
             </form>
-        </div> -->
+        </div>
     </div>
 
     <script>
         var selectedChatroom = "general";
-        
+        class Event {
+            constructor(type, payload) {
+                this.type = type;
+                this.payload = payload;
+            }
+        }
+
+        class SendMessageEvent {
+            constructor(message, from) {
+                this.message = message
+                this.from = from
+            }
+        }
+        class NewMessageEvent {
+            constructor(message, from, sent) {
+                this.message = message
+                this.from = from
+                this.sent = sent;
+            }
+        }
+        class ChangeChatRoomEvent {
+            constructor(name) {
+                this.name = name
+            }
+        }
+
+        function routeEvent(event) {
+            if (event.type === undefined) {
+                alert("no type field in the event");
+            }
+            switch (event.type) {
+                case "new_message":
+                    const messageEvent = Object.assign(new NewMessageEvent, event.payload)
+                    appendMessages(messageEvent)
+                    break;
+                case "send_message":
+                case "change_room":
+                default:
+                    console.log("unknown event type");
+                    break;
+            }
+        }
+
+        function appendMessages(messageEvent) {
+
+            console.log(messageEvent);
+            var date = new Date(messageEvent.sent);
+            // format
+            const formattedMessage = `${date.toLocaleString()}: ${messageEvent.message}`
+            // append
+            textarea = document.getElementById("chatmessages")
+            textarea.innerHTML = textarea.innerHTML + "\n" + formattedMessage;
+            textarea.scrollTop = textarea.scrollHeight;
+        }
+
         function changeChatRoom() {
+            // Change Header to reflect the changed chatroom
             var newChat = document.getElementById("chatroom");
+
             if (newChat != null && newChat.value != selectedChatroom) {
-                console.log(newChat);
+                selectedChatroom = newChat.value;
+                header = document.getElementById("chat-header").innerHTML = "Currenlty in chat: " + selectedChatroom;
+
+                let changeEvent = new ChangeChatRoomEvent(selectedChatroom);
+                sendEvent("change_room", changeEvent);
+                textarea = document.getElementById("chatmessages")
+                textarea.innerHTML = `You changed room into: ${selectedChatroom}`
             }
             return false;
         }
+
+        function sendEvent(eventName, payload) {
+            const event = new Event(eventName, payload);
+            conn.send(JSON.stringify(event));
+        }
         function sendMessage() {
-            var newMessage = document.getElementById("chatroom");
+            var newMessage = document.getElementById("message");
             if (newMessage != null) {
-                conn.send(newMessage.value);
+                sendEvent("send_message", new SendMessageEvent(newMessage.value, document.getElementById("username").value))
             }
             return false;
+        }
+        function login() {
+            let formData = {
+                "username": document.getElementById("username").value,
+                "password": document.getElementById("password").value
+            }
+            fetch("/login", {
+                method: "POST",
+                body: JSON.stringify(formData),
+                mode: 'cors'
+            }).then((response) => {
+                if (response.ok) {
+                    return response.json();
+                }
+            }).then((data) => {
+                console.log(data)
+                connectWebSocket(data.otp);
+            }).catch((e) => {alert("Unauthorized")});
+            return false;
+        }
+
+        function connectWebSocket(otp) {
+            if (window["WebSocket"]) {
+                conn = new WebSocket("wss://" + document.location.host + "/ws?otp="+otp);
+
+                conn.onopen = function() {
+                    document.getElementById("connection-header").innerHTML = "Connected to server: true";
+                }
+
+                conn.onclose = function() {
+                    document.getElementById("connection-header").innerHTML = "Connected to server: false";
+                }
+                conn.onmessage = function(event) {
+                    console.log(event);
+                    const eventData = JSON.parse(event.data);
+                    const eventObj = Object.assign(new Event, eventData);
+                    routeEvent(eventObj);
+                }
+            } else {
+                console.log("Browser does not support websockets");
+            }
         }
 
         window.onload = function() {
             document.getElementById("chatroom-selection").onsubmit = changeChatRoom;
             document.getElementById("chatroom-message").onsubmit = sendMessage;
-
-            if (window["WebSocket"]) {
-                var conn = new WebSocket("ws://" + document.location.host + "/ws");
-            } else {
-                console.log("Browser does not support websockets");
-            }
+            document.getElementById("login-form").onsubmit = login;
         }
     </script>
 

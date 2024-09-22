@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 )
 
 func main() {
 	setupAPI()
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServeTLS(":8080", "server.crt", "server.key", nil))
 }
 func setupAPI() {
-	manager := NewManager()
+
+	manager := NewManager(context.Background())
 
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
-	http.HandleFunc("/ws", manager.serveWeSocket)
+	http.HandleFunc("/login", manager.loginHandler)
+	http.HandleFunc("/ws", manager.serveWebSocket)
 }
